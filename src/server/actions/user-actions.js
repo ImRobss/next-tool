@@ -6,7 +6,7 @@ const globalForPrisma = globalThis;
 const prisma = globalForPrisma.prisma || new PrismaClient();
 if (!globalForPrisma.prisma) globalForPrisma.prisma = prisma;
 
-export async function getUsers() {
+export async function getUsers() { //pega lista usuários
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -24,3 +24,4 @@ export async function getUsers() {
     return [];
   }
 }
+

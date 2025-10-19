@@ -128,14 +128,8 @@ export default function LoginPage() {
         />
         <div className="relative max-w-[632px]">
           <h2 className="text-[72px] font-semibold leading-tight">
-            Sua gestão financeira com mais clareza e controle.
+            A gestão da sua empresa com mais clareza e controle.
           </h2>
-          <p className="mt-4 text-sm text-gray-100">
-            Lorem ipsum, dolor sit amet consectetur adipisicing elit. Ea quas
-            minima atque pariatur cum hic, repudiandae nemo natus consectetur
-            corporis obcaecati provident dicta debitis id dignissimos alias
-            molestiae eum sed?
-          </p>
         </div>
       </div>
     </div>

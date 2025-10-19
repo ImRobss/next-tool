@@ -1,5 +1,6 @@
 "use client";
 
+import MetricCard from "./_components/ui/MetricCard";
 import { useEffect, useMemo, useState } from "react";
 import { useDrag } from "react-dnd";
 import { useDrop } from "react-dnd";
@@ -9,9 +10,10 @@ import {
   listLeads,
   createLead,
   moveLead,
-  deleteLead,
+  deleteLead
 } from "../../server/actions/lead-actions";
 
+import { get_stages } from "@/server/actions/funnel-actions"
 import LeadButton from "./_components/ui/LeadButton";
 
 import {
@@ -29,38 +31,21 @@ import {
 import Client from "./_components/ui/Client";
 import StageColumn from "./_components/ui/StageColumn";
 
-const STAGES = [
+/* const STAGES = [
   { key: "LEAD", label: "Lead Capturado", color: "border-blue-500" },
   { key: "MQL", label: "MQL", color: "border-amber-400" },
   { key: "ANALISE_MQL", label: "Análise de MQL", color: "border-emerald-500" },
   { key: "SQL", label: "SQL", color: "border-red-500" },
   { key: "REUNIAO", label: "Reunião agendada", color: "border-yellow-400" },
-];
-
-function MetricCard({ icon: Icon, title, subtitle, value }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100">
-          <Icon size={20} className="text-slate-600" />
-        </div>
-        <div className="text-sm">
-          <div className="font-medium text-slate-800">{title}</div>
-          <div className="text-slate-400">{subtitle}</div>
-        </div>
-      </div>
-      <div className="mt-4 flex items-end justify-between">
-        <div className="text-2xl font-semibold text-slate-900">{value}</div>
-        <div className="h-8 w-24 rounded bg-gradient-to-tr from-emerald-100 to-emerald-200" />
-      </div>
-    </div>
-  );
-}
+]; */
 
 export function LeadCard({ lead, onDelete }) {
   const [{ isDragging }, drag] = useDrag({
     type: "LEAD_CARD",
-    item: { id: lead.id, stage: lead.stage },
+    item: () => ({
+      id: lead.id,
+      stage_id: lead.stage_id, // ✅ chave que será comparada no drop
+    }),
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
@@ -69,9 +54,8 @@ export function LeadCard({ lead, onDelete }) {
   return (
     <div
       ref={drag}
-      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm${
-        isDragging ? " opacity-50" : ""
-      }`}
+      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm${isDragging ? " opacity-50" : ""
+        }`}
       style={{ cursor: "move" }}
     >
       <div className=" mb-2 flex items-start justify-between">
@@ -79,24 +63,18 @@ export function LeadCard({ lead, onDelete }) {
           {(() => {
             const parts = lead.name.trim().split(" ");
             return parts.length > 1
-              ? `${parts[0]} ${parts[parts.length - 1]}`
-              : parts[0];
+              ? lead.id + ". " + `${parts[0]} ${parts[parts.length - 1]}`
+              : lead.id + ". " + parts[0];
           })()}
-                  
         </div>
-        <button
-          className="text-slate-400 hover:text-slate-600"
-          onClick={() => {
-            alert(`Ações para o lead: ${lead.name}`);
-          }}
-        >
-          <DotsThree size={18} weight="bold" />
-        </button>
+
+        <LeadButton windowTitle="Editar Lead" data={lead} />
+        {/* </button> */}
       </div>
 
       <div className="mb-3 text-xs text-slate-500">
         {new Date(lead.updatedAt).getDate() +
-          " deVERIFICAR ESSE CAMPO!!! " +
+          " de " +
           new Date(lead.updatedAt)
             .toLocaleDateString("pt-BR", { month: "long" })
             .replace(/^./, (str) => str.toUpperCase())}
@@ -135,6 +113,12 @@ export function LeadCard({ lead, onDelete }) {
             → {s.label}
           </button>
         ))} */}
+        <button
+          onClick={() => onDelete(lead.id)}
+          className="text-xs text-red-500 hover:underline"
+        >
+          Excluir
+        </button>
       </div>
     </div>
   );
@@ -143,6 +127,9 @@ export default function CRMPage() {
   const [leads, setLeads] = useState([]);
   const [userName, setUserName] = useState("");
   const [search, setSearch] = useState("");
+  const [prospecFunnels, setProspec] = useState([]);
+  const [expansionFunnels, setExpansion] = useState([]);
+  const [selectedFunnel, setSelectedFunnel] = useState("prospec"); // Estado para controlar a aba de prospecção e expansão
 
   async function refresh() {
     const data = await listLeads();
@@ -150,25 +137,48 @@ export default function CRMPage() {
   }
 
   useEffect(() => {
-    refresh();
-    try {
-      const name = localStorage.getItem("userName");
-      if (name) setUserName(name);
-    } catch (e) {}
+    async function fetchData() {
+      const [leadsData, prospecData, expansionData] = await Promise.all([
+        listLeads(),
+        get_stages(1),
+        get_stages(2)
+      ]);
+      
+      setLeads(leadsData);
+      setProspec(prospecData);
+      setExpansion(expansionData);
+
+      try {
+        const name = localStorage.getItem("userName");
+        if (name) setUserName(name);
+      } catch (e) { }
+    }
+    fetchData();
   }, []);
 
   const grouped = useMemo(() => {
-    const by = Object.fromEntries(STAGES.map((s) => [s.key, []]));
-    leads
-      .filter((l) =>
-        search
-          ? l.name.toLowerCase().includes(search.toLowerCase()) ||
-            (l.origin || "").toLowerCase().includes(search.toLowerCase())
-          : true
-      )
-      .forEach((l) => by[l.stage]?.push(l));
-    return by;
-  }, [leads, search]);
+  const by = Object.fromEntries([
+    ...prospecFunnels.map((f) => [f.id, []]),
+    ...expansionFunnels.map((f) => [f.id, []]), // Incluindo expansionFunnels
+  ]);
+  leads
+    .filter((l) =>
+      search
+        ? l.name.toLowerCase().includes(search.toLowerCase()) ||
+          (l.origin || "").toLowerCase().includes(search.toLowerCase())
+        : true
+    )
+    .forEach((l) => {
+      if (by[l.stage_id]) {
+        by[l.stage_id].push(l);
+      }
+    });
+  return by;
+}, [leads, search, prospecFunnels, expansionFunnels]);  // Dependência de expansionFunnels
+
+  const handleFunnelSelection = (funnelType) => {
+    setSelectedFunnel(funnelType);
+  };
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -187,20 +197,19 @@ export default function CRMPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Pesquisar…"
+                placeholder="Pesquisar cards"
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:bg-white"
               />
             </div>
 
             <nav className="space-y-1 text-sm">
-              {["Dashboard", "CRM"].map((item, idx) => (
+              {["Dashboard (em breve)", "CRM"].map((item, idx) => (
                 <a
                   key={item}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2 ${
-                    item === "CRM"
-                      ? "bg-blue-50 font-medium text-blue-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 ${item === "CRM"
+                    ? "bg-blue-50 font-medium text-blue-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                    }`}
                   href="#"
                 >
                   <span className="truncate">{item}</span>
@@ -215,7 +224,7 @@ export default function CRMPage() {
               <div className="mt-6 text-xs font-semibold uppercase text-slate-400">
                 Configurações
               </div>
-              {["Editor DRE/KPIs", "Usuários"].map((i) => (
+              {["Editor DRE/KPIs (em breve)", "Usuários (em breve)"].map((i) => (
                 <a
                   key={i}
                   className="mt-1 block rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-50"
@@ -240,10 +249,8 @@ export default function CRMPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  Nova oportunidade
-                </button>
-                <LeadButton />
+                <LeadButton windowTitle="Nova Etapa" />
+                <LeadButton windowTitle="Novo Lead" />
               </div>
             </div>
 
@@ -277,9 +284,9 @@ export default function CRMPage() {
             <div className="space-y-6 h-[655px]">
               <section className="h-[70px] flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm ">
                 {[
-                  { label: "Todos os vendedores" },
+                  /* { label: "Todos os vendedores" },
                   { label: "Todas as origens" },
-                  { label: "Últimos 30 dias" },
+                  { label: "Últimos 30 dias" }, */
                 ].map((f) => (
                   <button
                     key={f.label}
@@ -290,26 +297,74 @@ export default function CRMPage() {
                 ))}
 
                 <div className="ml-auto flex items-center gap-2">
-                  <button className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white">
+                  <button
+                    onClick={() => handleFunnelSelection("prospec")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${selectedFunnel === "prospec"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-500 hover:bg-slate-100"
+                      }`}
+                  >
                     Funil de Prospecção
                   </button>
-                  <button className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100">
+                  <button
+                    onClick={() => handleFunnelSelection("expansion")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${selectedFunnel === "expansion"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-500 hover:bg-slate-100"
+                      }`}
+                  >
                     Funil de Expansão
                   </button>
                 </div>
               </section>
+              <section>
+                {selectedFunnel === "prospec" && (
+                  <div
+                    className="grid gap-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${prospecFunnels.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {prospecFunnels.length > 0 ? (
+                      prospecFunnels.map((col) => (
+                        <StageColumn
+                          key={col.id}
+                          col={col}
+                          leads={grouped[col.id] || []}
+                          moveLead={moveLead}
+                          refresh={refresh}
+                          deleteLead={deleteLead}
+                        />
+                      ))
+                    ) : (
+                      <p>Colunas não encontradas ou não existentes</p>
+                    )}
+                  </div>
+                )}
 
-              <section className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-                {STAGES.map((col) => (
-                  <StageColumn
-                    key={col.key}
-                    col={col}
-                    leads={grouped[col.key]}
-                    moveLead={moveLead}
-                    refresh={refresh}
-                    deleteLead={deleteLead}
-                  />
-                ))}
+                {selectedFunnel === "expansion" && (
+                  <div
+                    className="grid gap-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${expansionFunnels.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {expansionFunnels.length > 0 ? (
+                      expansionFunnels.map((col) => (
+                        <StageColumn
+                          key={col.id}
+                          col={col}
+                          leads={grouped[col.id] || []}
+                          moveLead={moveLead}
+                          refresh={refresh}
+                          deleteLead={deleteLead}
+                        />
+                      ))
+                    ) : (
+                      <p>Colunas não encontradas ou não existentes</p>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
           </main>

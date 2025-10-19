@@ -190,14 +190,10 @@ export default function RegisterPage() {
           priority
         />
         <div className="relative max-w-[632px]">
-          <h2 className="text-[72px] font-semibold leading-tight">
-            Sua gestão financeira com mais clareza e controle.
-          </h2>
-          <p className="mt-4 text-sm text-gray-100">
-            Lorem ipsum et dictum sagittis viverra vitae massa dignissim erat
-            malesuada nunc arcu cras id sed.
-          </p>
-        </div>
+                  <h2 className="text-[72px] font-semibold leading-tight">
+                    A gestão da sua empresa com mais clareza e controle.
+                  </h2>
+                </div>
       </div>
     </div>
   );

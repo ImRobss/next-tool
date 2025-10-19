@@ -1,6 +1,7 @@
 "use server";
 
 import { PrismaClient, Stage } from "@prisma/client";
+// import { Nuosu_SIL } from "next/font/google";
 
 // --- Prisma singleton (evita muitas conexões em dev/hmr) ---
 const globalForPrisma = globalThis;
@@ -30,7 +31,7 @@ function stageOrDefault(v) {
 // ----------------- Ações -----------------
 export async function listLeads() {
   const leads = await prisma.lead.findMany({
-    orderBy: [{ stage: "asc" }, { createdAt: "desc" }],
+    orderBy: [{ stage_id: "asc" }, { createdAt: "desc" }],
     include: { owner: { select: { id: true, name: true, email: true } } },
   });
   return leads.map(serializeLead); //Retorna dados serializado, estava dando erro ao carregar a página
@@ -42,70 +43,98 @@ export async function listLeads() {
  * - ou um FormData direto do <form action={createLead}>
  */
 export async function createLead(payload) {
-  // Suporta FormData ou objeto plano
-  const get = (k) =>
-    payload instanceof FormData ? payload.get(k) : payload?.[k];
+  const data =
+    payload instanceof FormData
+      ? Object.fromEntries(payload.entries())
+      : payload ?? {};
 
-  const data = {
-    name: String(get("name") || "").trim(),
-    company: opt(get("company")),
-    email: opt(get("email")?.toLowerCase()),
-    phone: opt(get("phone")),
-    jobTitle: opt(get("jobTitle")),
-    origin: opt(get("origin")),
-    score: toInt(get("score")),
-    notes: opt(get("notes")),
-    value: toDecimal(get("value")),
-    ownerId: toInt(get("ownerId")),
-    stage: stageOrDefault(get("stage")), // default LEAD
+  // console.log("Dados recebidos:", data);
+
+  const leadData = {
+    name: String(data.name || "").trim(),
+    company: opt(data.company),
+    email: opt(data.email?.toLowerCase()),
+    phone: opt(data.phone),
+    jobTitle: opt(data.jobTitle),
+    origin: opt(data.origin),
+    score: toInt(data.score),
+    notes: opt(data.notes),
+    value: toDecimal(data.value),
+    stage_id: toInt(data.stageId),
+    opportunityTitle: opt(data.opportunityTitle),
+    estimatedValue: toDecimal(data.estimatedValue),
+    probability: toInt(data.probability),
+    expectedDate: data.expectedDate ? new Date(data.expectedDate) : null,
+    paymentCondition: opt(data.paymentCondition),
+    costCenter: opt(data.costCenter),
   };
 
-  if (!data.name) return { ok: false, error: "Nome é obrigatório." };
-
-  if (data.ownerId) {
-    const userExists = await prisma.user.findUnique({
-      where: { id: data.ownerId },
-    });
-
-    if (!userExists) {
-      return { ok: false, error: "Vendedor selecionado não existe." };
-    }
+  const ownerId = toInt(data.ownerId);
+  if (ownerId) {
+    leadData.owner = {
+      connect: { id: ownerId },
+    };
   }
 
-  const lead = await prisma.lead.create({ data });
-  return { ok: true, lead };
+  const id = toInt(data.id);
+
+  let result;
+
+  if (id) {
+    result = await prisma.lead.update({
+      where: { id },
+      data: leadData,
+    });
+  } else {
+    result = await prisma.lead.create({
+      data: leadData,
+    });
+  }
+
+  return { ok: true, leadData };
 }
 
 function serializeLead(lead) {
-  //Serializa os dados que estavam dando erro ao carregar a página
   return {
     id: lead.id,
     name: lead.name,
+    origin: lead.origin,
     company: lead.company,
     email: lead.email,
-    phone: lead.phone,
     jobTitle: lead.jobTitle,
-    origin: lead.origin,
-    score: lead.score,
     notes: lead.notes,
-    value: lead.value?.toNumber?.() ?? null, // ✅ Decimal → number
+    phone: lead.phone,
+    paymentCondition: lead.paymentCondition,
+    opportunityTitle: lead.opportunityTitle,
+    costCenter: lead.costCenter,
     ownerId: lead.ownerId,
-    stage: lead.stage,
-    createdAt: lead.createdAt.toISOString(), // ✅ Date → string
-    updatedAt: lead.updatedAt.toISOString(), // ✅ Date → string
+    stage_id: lead.stage_id,
+    score: lead.score,
+    probability: lead.probability,
+    value: lead.value?.toNumber?.() ?? null,            // <- Decimal convert
+    estimatedValue: lead.estimatedValue?.toNumber?.() ?? null,  // <- Decimal convert
+    expectedDate: lead.expectedDate ? lead.expectedDate.toISOString() : null, // Date convert
+    createdAt: lead.createdAt.toISOString(),
+    updatedAt: lead.updatedAt.toISOString(),
   };
 }
 
-export async function moveLead(leadId, nextStage) {
-  const stage = stageOrDefault(nextStage);
-  return prisma.lead.update({
+
+
+export async function moveLead(leadId, nextFunnelId) {
+  const lead = await prisma.lead.update({
     where: { id: Number(leadId) },
-    data: { stage },
+    data: { stage_id: Number(nextFunnelId) },
   });
+  return serializeLead(lead);
 }
 
 export async function deleteLead(leadId) {
-  return prisma.lead.delete({ where: { id: Number(leadId) } });
+  const lead = await prisma.lead.update({
+    where: { id: Number(leadId) },
+    data: { stage_id: 0 },
+  });
+  return serializeLead(lead);
 }
 
 export async function updateLead(leadId, partial = {}) {
